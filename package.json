@@ -1,0 +1,32 @@
+{
+  "name": "js-buffer-split",
+  "version": "1.0.1",
+  "description": "A library written in Typescript to split buffers .",
+  "main": "node index.js",
+  "scripts": {
+    "test": "mocha -r ts-node/register src/**/*.spec.ts",
+    "build": "tsc -p tsconfig.json && cp dist/buffer-split.d.ts index.d.ts"
+  },
+  "keywords": [
+    "utility",
+    "buffer",
+    "split",
+    "join"
+  ],
+  "author": "Hans Doller <kryo2k@gmail.com>",
+  "license": "GPLv3",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kryo2k/js-buffer-split.git"
+  },
+  "devDependencies": {
+    "@types/chai": "latest",
+    "@types/mocha": "latest",
+    "@types/node": "latest",
+    "chai": "latest",
+    "mocha": "latest",
+    "ts-node": "latest",
+    "typescript": "latest"
+  },
+  "dependencies": {}
+}
