@@ -1,7 +1,7 @@
 {
   "name": "js-buffer-split",
   "version": "1.0.1",
-  "description": "A library written in Typescript to split buffers .",
+  "description": "A library written in Typescript to split buffers and put them back together.",
   "main": "node index.js",
   "scripts": {
     "test": "mocha -r ts-node/register src/**/*.spec.ts",
