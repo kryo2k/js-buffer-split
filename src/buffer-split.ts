@@ -8,51 +8,62 @@ export interface ISplitAdapterReader <B extends Buffer = Buffer> {
 };
 
 /**
+* Writer interface for a split adapter.
+*/
+export interface ISplitAdapterWriter <B extends Buffer = Buffer> {
+  (source : B, targetOffset : number) : number;
+};
+
+/**
 * Abstract adapter for splitting a B
 */
 export abstract class SplitAdapter <B extends Buffer = Buffer> {
 
   /**
-  * Reducer to use when concatenating a B to another B.
-  */
-
-  protected joinReducer(writeTo : B, piece : B, index : number) : B {
-    return Buffer.concat([writeTo, piece]) as B;
-  }
-
-  /**
-  * Read a chunk from buffer within a defined range
-  */
-  protected readChunk (buffer : B, start : number, end : number) : B|false {
-
-    const
-    bufLength  = buffer.length,
-    chunkStart = Math.max(0, Math.round(start)),
-    chunkEnd   = Math.max(chunkStart, Math.min(Math.round(end), bufLength));
-
-    if(chunkStart > bufLength || chunkStart === chunkEnd)
-      return false;
-
-    return buffer.slice(chunkStart, chunkEnd) as B;
-  }
-
-  /**
-  * Read the Nth chunk of a B with a configurable chunk size.
-  */
-  protected readChunkEqualLength (buffer : B, chunkLength : number, index : number = 0) : B|false {
-    return this.readChunk(buffer, index * chunkLength, (index+1) * chunkLength);
-  }
-
-  /**
   * Abstract split a B function
   */
-  abstract createReader (buf: B) : ISplitAdapterReader<B>;
+  abstract createReader (source: B) : ISplitAdapterReader<B>;
+
+  /**
+  * Abstract combine a B function
+  */
+  abstract createWriter (target: B, targetOffset : number, totalToWrite : number) : ISplitAdapterWriter<B>;
+
+  /**
+  * Compute the length of a single B.
+  */
+  protected getByteLength (b : B) : number {
+    return b.byteLength;
+  }
+
+  /**
+  * Compute the total length of an array of B.
+  */
+  protected totalByteLength (arr : B[], previousLength : number = 0) : number {
+    return arr.reduce((p, c) => p + this.getByteLength(c), previousLength);
+  }
 
   /**
   * Basic public join function
   */
-  join (pieces : B[], writeTo : B = Buffer.allocUnsafe(0) as B) : B {
-    return pieces.reduce(this.joinReducer.bind(this), writeTo);
+  join (arr : B[], target ?: B, targetOffset : number = 0) : B {
+
+    const
+    arrLength     = arr.length,
+    arrByteLength = this.totalByteLength(arr);
+
+    if(typeof target === 'undefined')
+      target = new Buffer(arrByteLength) as B;
+
+    const write = this.createWriter(target, targetOffset, arrByteLength);
+    let pieceIndex : number = 0, wroteBytes = 0, lWriteBytes : number;
+
+    while(pieceIndex < arrLength && (lWriteBytes = write(arr[pieceIndex], wroteBytes)) > 0) {
+      wroteBytes += lWriteBytes;
+      pieceIndex++;
+    }
+
+    return target;
   }
 
   /**
@@ -69,6 +80,41 @@ export abstract class SplitAdapter <B extends Buffer = Buffer> {
 
     return pieces;
   }
+
+  static createChunkReader <B extends Buffer = Buffer>(source: B, chunkLength : number) : ISplitAdapterReader<B> {
+    const
+    chunksTotal = Math.ceil(source.length / chunkLength),
+    readChunk = (start : number, end : number) : B|false => {
+
+      const
+      bufLength  = source.length,
+      chunkStart = Math.max(0, Math.round(start)),
+      chunkEnd   = Math.max(chunkStart, Math.min(Math.round(end), bufLength));
+
+      if(chunkStart > bufLength || chunkStart === chunkEnd)
+        return false;
+
+      return source.slice(chunkStart, chunkEnd) as B;
+    };
+
+    let index = 0;
+
+    return () : B|false => {
+      const chunk = readChunk(index * chunkLength, (index+1) * chunkLength)
+      if(chunk) index++
+      return chunk;
+    };
+  }
+
+  static createCopyWriter <B extends Buffer = Buffer>(target : B, targetOffset: number, totalToWrite : number) : ISplitAdapterWriter<B> {
+
+    const targetAvail = (target.byteLength - targetOffset);
+
+    if(targetAvail < totalToWrite)
+      throw new RangeError(`Target does not contain enough space (space required: ${totalToWrite}, available: ${targetAvail}).`);
+
+    return (source: B, curOffset : number) : number => source.copy(target, targetOffset + curOffset, 0, source.length);
+  }
 };
 
 /**
@@ -82,8 +128,8 @@ export function split <B extends Buffer = Buffer>(adapter : SplitAdapter<B>, buf
 /**
 * Static module function to perform buffer join
 */
-export function join <B extends Buffer = Buffer>(adapter : SplitAdapter<B>, pieces: B[], writeTo ?: B) : B {
-  return adapter.join(pieces, writeTo);
+export function join <B extends Buffer = Buffer>(adapter : SplitAdapter<B>, pieces: B[], target ?: B) : B {
+  return adapter.join(pieces, target);
 };
 
 //
@@ -101,15 +147,12 @@ export class SplitEqualAmount extends SplitAdapter {
     this.amount = amount;
   }
 
-  createReader (buf: Buffer) : ISplitAdapterReader {
-    const chunkLength = Math.ceil(buf.length / Math.max(1, Math.round(this.amount)));
-    let   index     = 0;
+  createReader (source: Buffer) : ISplitAdapterReader {
+    return SplitAdapter.createChunkReader(source, Math.ceil(source.length / Math.max(1, Math.round(this.amount))));
+  }
 
-    return () => {
-      const chunk = this.readChunkEqualLength(buf, chunkLength, index);
-      if(chunk) index++
-      return chunk;
-    }
+  createWriter (target: Buffer, targetOffset : number, totalToWrite : number) : ISplitAdapterWriter {
+    return SplitAdapter.createCopyWriter(target, targetOffset, totalToWrite);
   }
 };
 
@@ -124,14 +167,11 @@ export class SplitEqualLength extends SplitAdapter {
     this.length = length;
   }
 
-  createReader (buf: Buffer) : ISplitAdapterReader {
-    const chunkLength = Math.max(1, Math.round(this.length));
-    let   index     = 0;
+  createReader (source: Buffer) : ISplitAdapterReader {
+    return SplitAdapter.createChunkReader(source, Math.max(1, Math.round(this.length)));
+  }
 
-    return () => {
-      const chunk = this.readChunkEqualLength(buf, chunkLength, index);
-      if(chunk) index++
-      return chunk;
-    }
+  createWriter (target : Buffer, targetOffset : number, totalToWrite : number) : ISplitAdapterWriter {
+    return SplitAdapter.createCopyWriter(target, targetOffset, totalToWrite);
   }
 };

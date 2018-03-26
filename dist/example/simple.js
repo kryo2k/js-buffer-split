@@ -6,7 +6,12 @@ const util_1 = require("util");
 function inspect(v) { return util_1.inspect(v, undefined, null, true); }
 const bufTest1 = new buffer_1.Buffer([
     1, 0, 0, 0, 0,
-]), adapter1 = new buffer_split_1.SplitEqualLength(3), adapter2 = new buffer_split_1.SplitEqualAmount(3), bufTest1SplitEL = buffer_split_1.split(adapter1, bufTest1), bufTest1SplitEA = buffer_split_1.split(adapter2, bufTest1);
+    2, 0, 0, 0, 0,
+    3, 0, 0, 0, 0,
+    4, 0, 0, 0, 0,
+    5, 0, 0, 0, 0,
+    6, 0
+]), adapter1 = new buffer_split_1.SplitEqualLength(2), adapter2 = new buffer_split_1.SplitEqualAmount(2), bufTest1SplitEL = buffer_split_1.split(adapter1, bufTest1), bufTest1SplitEA = buffer_split_1.split(adapter2, bufTest1);
 console.log('bufTest1: %s', inspect(bufTest1));
 console.log('bufTest1SplitEL: %s', inspect(bufTest1SplitEL));
 console.log('bufTest1SplitEA: %s', inspect(bufTest1SplitEA));

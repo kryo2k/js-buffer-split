@@ -2,36 +2,37 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const buffer_1 = require("buffer");
 ;
+;
 /**
 * Abstract adapter for splitting a B
 */
 class SplitAdapter {
     /**
-    * Reducer to use when concatenating a B to another B.
+    * Compute the length of a single B.
     */
-    joinReducer(writeTo, piece, index) {
-        return buffer_1.Buffer.concat([writeTo, piece]);
+    getByteLength(b) {
+        return b.byteLength;
     }
     /**
-    * Read a chunk from buffer within a defined range
+    * Compute the total length of an array of B.
     */
-    readChunk(buffer, start, end) {
-        const bufLength = buffer.length, chunkStart = Math.max(0, Math.round(start)), chunkEnd = Math.max(chunkStart, Math.min(Math.round(end), bufLength));
-        if (chunkStart > bufLength || chunkStart === chunkEnd)
-            return false;
-        return buffer.slice(chunkStart, chunkEnd);
-    }
-    /**
-    * Read the Nth chunk of a B with a configurable chunk size.
-    */
-    readChunkEqualLength(buffer, chunkLength, index = 0) {
-        return this.readChunk(buffer, index * chunkLength, (index + 1) * chunkLength);
+    totalByteLength(arr, previousLength = 0) {
+        return arr.reduce((p, c) => p + this.getByteLength(c), previousLength);
     }
     /**
     * Basic public join function
     */
-    join(pieces, writeTo = buffer_1.Buffer.allocUnsafe(0)) {
-        return pieces.reduce(this.joinReducer.bind(this), writeTo);
+    join(arr, target, targetOffset = 0) {
+        const arrLength = arr.length, arrByteLength = this.totalByteLength(arr);
+        if (typeof target === 'undefined')
+            target = new buffer_1.Buffer(arrByteLength);
+        const write = this.createWriter(target, targetOffset, arrByteLength);
+        let pieceIndex = 0, wroteBytes = 0, lWriteBytes;
+        while (pieceIndex < arrLength && (lWriteBytes = write(arr[pieceIndex], wroteBytes)) > 0) {
+            wroteBytes += lWriteBytes;
+            pieceIndex++;
+        }
+        return target;
     }
     /**
     * Basic public split function
@@ -41,6 +42,27 @@ class SplitAdapter {
         for (let read = reader(); read !== false; read = reader())
             pieces.push(read);
         return pieces;
+    }
+    static createChunkReader(source, chunkLength) {
+        const chunksTotal = Math.ceil(source.length / chunkLength), readChunk = (start, end) => {
+            const bufLength = source.length, chunkStart = Math.max(0, Math.round(start)), chunkEnd = Math.max(chunkStart, Math.min(Math.round(end), bufLength));
+            if (chunkStart > bufLength || chunkStart === chunkEnd)
+                return false;
+            return source.slice(chunkStart, chunkEnd);
+        };
+        let index = 0;
+        return () => {
+            const chunk = readChunk(index * chunkLength, (index + 1) * chunkLength);
+            if (chunk)
+                index++;
+            return chunk;
+        };
+    }
+    static createCopyWriter(target, targetOffset, totalToWrite) {
+        const targetAvail = (target.byteLength - targetOffset);
+        if (targetAvail < totalToWrite)
+            throw new RangeError(`Target does not contain enough space (space required: ${totalToWrite}, available: ${targetAvail}).`);
+        return (source, curOffset) => source.copy(target, targetOffset + curOffset, 0, source.length);
     }
 }
 exports.SplitAdapter = SplitAdapter;
@@ -56,8 +78,8 @@ exports.split = split;
 /**
 * Static module function to perform buffer join
 */
-function join(adapter, pieces, writeTo) {
-    return adapter.join(pieces, writeTo);
+function join(adapter, pieces, target) {
+    return adapter.join(pieces, target);
 }
 exports.join = join;
 ;
@@ -72,15 +94,11 @@ class SplitEqualAmount extends SplitAdapter {
         super();
         this.amount = amount;
     }
-    createReader(buf) {
-        const chunkLength = Math.ceil(buf.length / Math.max(1, Math.round(this.amount)));
-        let index = 0;
-        return () => {
-            const chunk = this.readChunkEqualLength(buf, chunkLength, index);
-            if (chunk)
-                index++;
-            return chunk;
-        };
+    createReader(source) {
+        return SplitAdapter.createChunkReader(source, Math.ceil(source.length / Math.max(1, Math.round(this.amount))));
+    }
+    createWriter(target, targetOffset, totalToWrite) {
+        return SplitAdapter.createCopyWriter(target, targetOffset, totalToWrite);
     }
 }
 exports.SplitEqualAmount = SplitEqualAmount;
@@ -93,15 +111,11 @@ class SplitEqualLength extends SplitAdapter {
         super();
         this.length = length;
     }
-    createReader(buf) {
-        const chunkLength = Math.max(1, Math.round(this.length));
-        let index = 0;
-        return () => {
-            const chunk = this.readChunkEqualLength(buf, chunkLength, index);
-            if (chunk)
-                index++;
-            return chunk;
-        };
+    createReader(source) {
+        return SplitAdapter.createChunkReader(source, Math.max(1, Math.round(this.length)));
+    }
+    createWriter(target, targetOffset, totalToWrite) {
+        return SplitAdapter.createCopyWriter(target, targetOffset, totalToWrite);
     }
 }
 exports.SplitEqualLength = SplitEqualLength;

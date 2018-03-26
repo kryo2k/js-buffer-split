@@ -7,14 +7,14 @@ function inspect (v:any) { return _inspect(v, undefined, null, true); }
 const
 bufTest1 = new Buffer([
   1,0,0,0,0,
-  // 2,0,0,0,0,
-  // 3,0,0,0,0,
-  // 4,0,0,0,0,
-  // 5,0,0,0,0,
-  // 6,0
+  2,0,0,0,0,
+  3,0,0,0,0,
+  4,0,0,0,0,
+  5,0,0,0,0,
+  6,0
 ]),
-adapter1 = new SplitEqualLength(3),
-adapter2 = new SplitEqualAmount(3),
+adapter1 = new SplitEqualLength(2),
+adapter2 = new SplitEqualAmount(2),
 
 bufTest1SplitEL = split(adapter1, bufTest1),
 bufTest1SplitEA = split(adapter2, bufTest1);
